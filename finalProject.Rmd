@@ -1,0 +1,103 @@
+---
+title: "GEOG 490 Final project"
+author: "Roane Mullins"
+date: "6/3/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Sea Surface Temperature Mapping
+
+This poroject maps the surface temperature of oceans around the world. The data comes from the NOAA.
+
+
+
+```{r}
+# Load the packages
+library(ncdf4)
+library(lattice)
+library(RColorBrewer)
+
+# Setup the variables
+ncpath <- "/Users/roane/Desktop/UO/Spring2019/GEOG490/FinalData/"
+ncname_prefix <- "ersst.v5."
+nc_year = "2018"
+nc_name_extension = ".nc"
+dname <- "sst"
+nt <- 12
+
+# Construct the surface temperature array array(nlon, nlat, nt)
+for (x in sprintf("%02d", seq(1,nt))) {
+  
+  # Construct the filename
+  ncfname <- paste(ncpath, ncname_prefix, nc_year, x, nc_name_extension, sep="")
+  
+  # Open the file
+  ncin <- nc_open(ncfname)
+  
+
+  if (x == "01") {
+    # Construct some globals the first time through the loop
+    lon <- ncvar_get(ncin,"lon")
+    lat <- ncvar_get(ncin,"lat")
+    nlon <- dim(lon)
+    nlat <- dim(lat)
+    sst_array = array(dim=c(nlon, nlat, nt))
+  }
+  
+  # get surface temperature for month
+  sst_slice <- ncvar_get(ncin,dname)
+  fillvalue <- ncatt_get(ncin,dname,"_FillValue")
+  
+  # replace netCDF fill values with NA's
+  sst_slice[sst_slice==fillvalue$value] <- NA
+  
+  # save it to the global array
+  sst_array[,,as.numeric(x)] = sst_slice
+  
+  # close file
+  nc_close(ncin)
+}
+
+# prepare to compute the annual min, max, and mean
+# reshape the array into vector
+sst_vec_long <- as.vector(sst_array)
+
+# reshape the vector into a matrix
+sst_mat <- matrix(sst_vec_long, nrow=nlon*nlat, ncol=nt)
+
+# create a dataframe
+lonlat <- as.matrix(expand.grid(lon,lat))
+sst_df <- data.frame(cbind(lonlat,sst_mat))
+names(sst_df) <- c("lon","lat","tmpJan","tmpFeb","tmpMar","tmpApr","tmpMay","tmpJun",
+                     "tmpJul","tmpAug","tmpSep","tmpOct","tmpNov","tmpDec")
+
+# get the annual mean and max and min
+sst_df$max <- apply(sst_df[3:14],1,max) # max
+sst_df$min <- apply(sst_df[3:14],1,min) # min
+sst_df$mean <- apply(sst_df[3:14],1,mean) # annual (i.e. row) means
+
+# convert the mean, max, min to arrays for plotting
+sst_max_array <- array(sst_df$max, dim=c(nlon,nlat))
+sst_min_array <- array(sst_df$min, dim=c(nlon,nlat))
+sst_mean_array <- array(sst_df$mean, dim=c(nlon,nlat))
+
+# plot the arrays
+grid <- expand.grid(lon=lon, lat=lat)
+
+cutpts <- c(-5,0,5,10,15,20,25,30,35,40,45)
+
+levelplot(sst_max_array ~ lon * lat, data=grid, at=cutpts, cuts=11, main=paste(nc_year, "Annual Maximum", sep=" - ") ,pretty=T, 
+          col.regions=(rev(brewer.pal(10,"RdBu"))))
+
+levelplot(sst_min_array ~ lon * lat, data=grid, at=cutpts, cuts=11, main=paste(nc_year, "Annual Minimum", sep=" - "), pretty=T, 
+          col.regions=(rev(brewer.pal(10,"RdBu"))))
+
+levelplot(sst_mean_array ~ lon * lat, data=grid, at=cutpts, cuts=11, main=paste(nc_year, "Annual Mean", sep=" - "), pretty=T, 
+          col.regions=(rev(brewer.pal(10,"RdBu"))))
+
+```
+
